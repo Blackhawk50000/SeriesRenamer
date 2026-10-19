@@ -1,4 +1,4 @@
-# Baut bei jedem Tag "v*" (z. B. v1.1.0) die exe und veröffentlicht sie als GitHub-Release.
+﻿# Baut bei jedem Tag "v*" (z. B. v1.1.0) die exe und veröffentlicht sie als GitHub-Release.
 # Manuell gestartet ("Run workflow") wird nur gebaut und die exe als Build-Artefakt abgelegt.
 name: Release
 
@@ -19,9 +19,9 @@ jobs:
         shell: pwsh
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: "10.0.x"
 
@@ -50,7 +50,7 @@ jobs:
 
       - name: Build-Artefakt hochladen
         if: github.ref_type != 'tag'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: SeriesRenamer-${{ env.VERSION }}
           path: publish/SeriesRenamer.exe
