@@ -22,6 +22,8 @@ public partial class MainWindow : Window
     private TmdbClient? _client;
     private ScrollViewer? _leftScroll, _rightScroll;
     private bool _syncingSelection, _syncingScroll;
+    private TvShow? _orderBoxShow;
+    private int _orderBoxVersion;
 
     public MainWindow()
     {
@@ -171,6 +173,7 @@ public partial class MainWindow : Window
             SetBusy(false);
             RefreshNames();
         }
+        await UpdateOrderBoxAsync();
     }
 
     private static async Task LoadEpisodeTitlesAsync(TmdbClient client, IEnumerable<MediaFile> targets)
@@ -183,17 +186,32 @@ public partial class MainWindow : Window
 
             try
             {
-                var episodes = await client.GetSeasonAsync(file.Show.Id, parsed.Season.Value);
+                var season = parsed.Season.Value;
                 var numbers = Enumerable.Range(parsed.Episode.Value, (parsed.EpisodeEnd ?? parsed.Episode.Value) - parsed.Episode.Value + 1);
                 var titles = new List<string>();
                 string? error = null;
 
-                foreach (var n in numbers)
+                if (file.Order.Id is { } orderId)
                 {
-                    if (episodes.TryGetValue(n, out var title))
-                        titles.Add(title);
-                    else
-                        error = $"Episode {n} in Staffel {parsed.Season} bei TMDb nicht gefunden";
+                    var episodes = await client.GetEpisodeOrderAsync(orderId);
+                    foreach (var n in numbers)
+                    {
+                        if (episodes.TryGetValue((season, n), out var title))
+                            titles.Add(title);
+                        else
+                            error = $"Episode {n} in Staffel {season} der Reihenfolge „{file.Order.Name}“ nicht gefunden";
+                    }
+                }
+                else
+                {
+                    var episodes = await client.GetSeasonAsync(file.Show.Id, season);
+                    foreach (var n in numbers)
+                    {
+                        if (episodes.TryGetValue(n, out var title))
+                            titles.Add(title);
+                        else
+                            error = $"Episode {n} in Staffel {season} bei TMDb nicht gefunden";
+                    }
                 }
 
                 file.EpisodeTitles = titles;
@@ -276,6 +294,97 @@ public partial class MainWindow : Window
         }
 
         SetBusy(true, $"Lade Episoden von {show.Name} …");
+        try
+        {
+            await LoadEpisodeTitlesAsync(client, targets);
+        }
+        finally
+        {
+            SetBusy(false);
+            RefreshNames();
+        }
+        await UpdateOrderBoxAsync();
+    }
+
+    // ---------- Ausstrahlungsreihenfolge ----------
+
+    /// <summary>
+    /// Füllt die Reihenfolgen-Auswahl für die Serie der markierten Dateien (bzw. aller Dateien).
+    /// Ist mehr als eine Serie betroffen, bleibt die Auswahl gesperrt.
+    /// </summary>
+    private async Task UpdateOrderBoxAsync()
+    {
+        var version = ++_orderBoxVersion;
+        var files = SelectedFiles();
+        if (files.Count == 0)
+            files = _files.ToList();
+
+        var shows = files.Where(f => f.Show is not null).Select(f => f.Show!).DistinctBy(s => s.Id).ToList();
+        if (shows.Count != 1 || _client is null)
+        {
+            _orderBoxShow = null;
+            OrderBox.ItemsSource = null;
+            OrderBox.IsEnabled = AssignOrderButton.IsEnabled = false;
+            OrderShowText.Text = shows.Count > 1
+                ? "Mehrere Serien markiert – bitte nur Dateien einer Serie markieren"
+                : "Zuerst eine Serie abgleichen oder festlegen";
+            return;
+        }
+
+        var show = shows[0];
+        var current = files.First(f => f.Show?.Id == show.Id).Order;
+        OrderShowText.Text = $"Lade Reihenfolgen von {show} …";
+
+        IReadOnlyList<EpisodeOrder> orders;
+        try
+        {
+            orders = await _client.GetEpisodeOrdersAsync(show.Id);
+        }
+        catch (Exception ex)
+        {
+            if (version != _orderBoxVersion)
+                return;
+            _orderBoxShow = null;
+            OrderBox.ItemsSource = null;
+            OrderBox.IsEnabled = AssignOrderButton.IsEnabled = false;
+            OrderShowText.Text = $"TMDb-Fehler: {ex.Message}";
+            return;
+        }
+
+        // Inzwischen wurde etwas anderes markiert
+        if (version != _orderBoxVersion)
+            return;
+
+        _orderBoxShow = show;
+        OrderBox.ItemsSource = orders;
+        OrderBox.SelectedItem = orders.FirstOrDefault(o => o.Id == current.Id) ?? orders[0];
+        OrderBox.IsEnabled = orders.Count > 1;
+        AssignOrderButton.IsEnabled = orders.Count > 1 && MatchButton.IsEnabled;
+        OrderShowText.Text = orders.Count > 1
+            ? $"{show}:"
+            : $"{show}: keine alternativen Reihenfolgen bei TMDb";
+    }
+
+    private async void AssignOrder_Click(object sender, RoutedEventArgs e)
+    {
+        if (_orderBoxShow is not { } show || OrderBox.SelectedItem is not EpisodeOrder order)
+            return;
+
+        var client = GetClient();
+        if (client is null)
+            return;
+
+        var targets = SelectedFiles().Where(f => f.Show?.Id == show.Id).ToList();
+        if (targets.Count == 0)
+            targets = _files.Where(f => f.Show?.Id == show.Id).ToList();
+
+        foreach (var f in targets)
+        {
+            f.Order = order;
+            f.LookupError = null;
+        }
+
+        SetBusy(true, $"Lade Episoden in Reihenfolge „{order.Name}“ …");
         try
         {
             await LoadEpisodeTitlesAsync(client, targets);
@@ -419,6 +528,7 @@ public partial class MainWindow : Window
         foreach (var file in SelectedFiles())
             _files.Remove(file);
         RefreshNames();
+        _ = UpdateOrderBoxAsync();
     }
 
     private void Clear_Click(object sender, RoutedEventArgs e)
@@ -427,6 +537,7 @@ public partial class MainWindow : Window
         _lastRenames.Clear();
         UndoButton.IsEnabled = false;
         RefreshNames();
+        _ = UpdateOrderBoxAsync();
     }
 
     /// <summary>Hält die Markierung in beiden Listen gleich.</summary>
@@ -442,6 +553,8 @@ public partial class MainWindow : Window
         foreach (var item in source.SelectedItems)
             other.SelectedItems.Add(item);
         _syncingSelection = false;
+
+        _ = UpdateOrderBoxAsync();
     }
 
     /// <summary>Scrollt die beiden Listen gemeinsam, damit links und rechts immer zusammenpassen.</summary>
@@ -485,6 +598,7 @@ public partial class MainWindow : Window
         MatchButton.IsEnabled = !busy;
         RenameButton.IsEnabled = !busy;
         AssignSeriesButton.IsEnabled = !busy;
+        AssignOrderButton.IsEnabled = !busy && OrderBox.IsEnabled;
         Cursor = busy ? Cursors.Wait : null;
         if (busy && message is not null)
             StatusText.Text = message;

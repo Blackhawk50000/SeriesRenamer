@@ -15,6 +15,8 @@ Aus `breaking.bad.s01e05.1080p.web.mkv` wird zum Beispiel
 - **Abgleich mit TMDb** für Seriennamen, Jahr und Episodentitel in der gewünschten Sprache
   (de-DE, en-US, fr-FR, es-ES, ja-JP)
 - **Serie manuell festlegen**, falls die automatische Erkennung danebenliegt
+- **Alternative Ausstrahlungsreihenfolgen** (TMDb „Episode Groups“, z. B. DVD-, Produktions-
+  oder absolute Reihenfolge), wenn die Dateien nicht nach der normalen TMDb-Staffelzählung nummeriert sind
 - **Vorschau** der neuen Namen vor dem Umbenennen
 - **Rückgängig** machen der letzten Umbenennung
 - Ungültige Zeichen für Windows-Dateinamen werden automatisch ersetzt
@@ -44,7 +46,11 @@ Alternativ `SeriesRenamer.slnx` in Visual Studio öffnen.
 3. **Mit TMDb abgleichen** klicken und die Vorschau unter „Neue Namen“ prüfen.
 4. Falls eine Serie falsch erkannt wurde: Dateien markieren, unter
    **Serie manuell festlegen** suchen und **Für Auswahl übernehmen**.
-5. **Dateien umbenennen** – bei Bedarf mit **Rückgängig** zurücksetzen.
+5. Falls die Dateien nach einer anderen Reihenfolge nummeriert sind (z. B. DVD-Reihenfolge):
+   Dateien der Serie markieren, unter **Ausstrahlungsreihenfolge** die passende Reihenfolge
+   wählen und **Für Auswahl übernehmen**. Staffel und Episode aus dem Dateinamen werden dann
+   in dieser Reihenfolge nachgeschlagen (Staffel = Gruppen-Nummer bei TMDb, wie bei Kodi/Jellyfin).
+6. **Dateien umbenennen** – bei Bedarf mit **Rückgängig** zurücksetzen.
 
 ## Benennungsmuster
 

@@ -18,6 +18,7 @@ public sealed class MediaFile : INotifyPropertyChanged
 {
     private string _fullPath;
     private TvShow? _show;
+    private EpisodeOrder _order = EpisodeOrder.Default;
     private string _newName = "";
     private string _status = "";
     private FileState _state;
@@ -52,7 +53,22 @@ public sealed class MediaFile : INotifyPropertyChanged
         get => _show;
         set
         {
+            // Eine Reihenfolge gehört zu genau einer Serie
+            if (value?.Id != _show?.Id)
+                _order = EpisodeOrder.Default;
             _show = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(DetectionInfo));
+        }
+    }
+
+    /// <summary>Gewählte Ausstrahlungsreihenfolge, nach der Staffel/Episode des Dateinamens interpretiert werden.</summary>
+    public EpisodeOrder Order
+    {
+        get => _order;
+        set
+        {
+            _order = value;
             OnPropertyChanged();
             OnPropertyChanged(nameof(DetectionInfo));
         }
@@ -81,7 +97,8 @@ public sealed class MediaFile : INotifyPropertyChanged
             var series = Show is not null
                 ? $"TMDb: {Show}"
                 : $"Erkannt: {Parsed.SeriesGuess ?? "?"}";
-            return $"{episode}  ·  {series}";
+            var order = Show is not null && Order.Id is not null ? $"  ·  Reihenfolge: {Order.Name}" : "";
+            return $"{episode}  ·  {series}{order}";
         }
     }
 
